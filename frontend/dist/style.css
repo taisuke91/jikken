@@ -1,0 +1,240 @@
+:root {
+  --bg0: #0f0b12;
+  --bg1: #1a1224;
+  --accent: #ff4d6d;
+  --accent2: #ffc857;
+  --text: #f4f0f8;
+  --muted: #9a8fb0;
+  --panel: rgba(28, 20, 40, 0.85);
+  --border: rgba(255, 255, 255, 0.08);
+  font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  background: var(--bg0);
+}
+
+.bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%, rgba(255, 77, 109, 0.25), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 80% 80%, rgba(255, 200, 87, 0.12), transparent 50%),
+    linear-gradient(160deg, var(--bg0), var(--bg1));
+  z-index: -1;
+}
+
+.panel {
+  max-width: 520px;
+  margin: 2.5rem auto;
+  padding: 1.75rem 1.5rem 2rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.65rem;
+  letter-spacing: 0.04em;
+}
+
+.sub {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.controls {
+  margin-top: 1.5rem;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+.row input {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+button {
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button.primary {
+  background: linear-gradient(135deg, var(--accent), #c9184a);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0;
+}
+
+.hint code {
+  font-size: 0.85em;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.manual-test {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.section-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.manual-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.manual-grid button {
+  padding: 0.55rem 0.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.manual-grid button:hover {
+  background: rgba(255, 77, 109, 0.35);
+  border-color: rgba(255, 77, 109, 0.5);
+}
+
+.manual-grid button:active {
+  transform: scale(0.97);
+}
+
+.manual-status {
+  margin-top: 0.65rem;
+  min-height: 1.25em;
+}
+
+.meter {
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.score-wrap {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.score {
+  font-size: 4.5rem;
+  font-weight: 800;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff, var(--accent2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.max {
+  font-size: 1.5rem;
+  color: var(--muted);
+}
+
+.label {
+  margin: 0.5rem 0 1rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--accent2);
+}
+
+.bar-track {
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2ec4b6, var(--accent2), var(--accent));
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.log {
+  margin-top: 2rem;
+}
+
+.log h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+#rawOut {
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow: auto;
+}

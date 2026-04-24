@@ -1,0 +1,10 @@
+1. ターミナルを開く
+
+2. 以下を実行:
+   cd /Users/itotaisuke/Desktop/jikken/backend
+   .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+
+3. ブラウザで開く:
+   http://127.0.0.1:8000
+
+4. 止めるときは Ctrl+C
