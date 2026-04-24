@@ -7,6 +7,7 @@ const int LED_PIN = 2;
 int score_ = 0;
 int count = 0;
 String line_ = "default";
+bool once_available = false;
 
 void setup() {
   Serial.begin(BAUD);
@@ -16,8 +17,10 @@ void setup() {
 
 void loop() {
   count++;
-  if (count % 100 == 0) {
+  if (count % 10000 == 0) {
+    count = 0;
     Serial.println(line_);
+    Serial.println(once_available);
   }
   // Serial.println(score_);
   if (score_ == 0) {
@@ -30,9 +33,11 @@ void loop() {
     digitalWrite(LED_PIN, HIGH);
   }
 
-  if (!Serial.available()) {
+  if (Serial.available() == 0) {
     return;
   }
+  Serial.println(line_);
+  once_available = true;
   String line = Serial.readStringUntil('\n');
   line.trim();
   line_ = line;

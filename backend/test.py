@@ -38,17 +38,17 @@ def send_score_to_mcu(score: int) -> bool:
     ser = get_serial()
     if not ser:
         return False
-    if SERIAL_SIMPLE:
-        line = f"FLAME {score}\n"
-        payload = line.encode("ascii")
-    else:
-        line = json.dumps({"type": "flame", "score": score}, ensure_ascii=False) + "\n"
-        payload = line.encode("utf-8")
+        
+    line = f"FLAME {score}\n"
+    payload = line.encode("ascii")
+
     try:
         ser.write(payload)
         ser.flush()
-        ser.close()
         return True
     except Exception as e:
         logger.warning("Serial write failed: %s", e)
         return False
+
+def close():
+    ser = None
