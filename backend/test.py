@@ -47,6 +47,7 @@ def send_score_to_mcu(score: int) -> bool:
     try:
         ser.write(payload)
         ser.flush()
+        ser.close()
         return True
     except Exception as e:
         logger.warning("Serial write failed: %s", e)
