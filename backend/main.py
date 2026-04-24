@@ -7,8 +7,8 @@ import json
 import logging
 import os
 import re
-import typing
 from typing import Any
+from typing_extensions import TypedDict
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -19,19 +19,21 @@ from fastapi.staticfiles import StaticFiles
 from google.generativeai.types import HarmBlockThreshold, HarmCategory
 from pydantic import BaseModel, Field
 
+from prompts import SYSTEM_INSTRUCTION
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 SERIAL_PORT = os.getenv("SERIAL_PORT", "").strip()
 SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", "115200"))
 SERIAL_SIMPLE = os.getenv("SERIAL_SIMPLE", "").lower() in ("1", "true", "yes")
 
 
-class FlameScoreDict(typing.TypedDict):
+class FlameScoreDict(TypedDict):
     score: int
 
 
@@ -42,16 +44,16 @@ class FlameScoreResponse(BaseModel):
 
 
 LABELS_JA = [
-    (1, "\u8056\u4eba\u30e2\u30fc\u30c9"),
-    (2, "\u307b\u307c\u7121\u5bb3"),
-    (3, "\u3061\u3087\u3044\u8f9b\u53e3"),
-    (4, "\u30c4\u30c3\u30b3\u30df\u5f85\u3061"),
-    (5, "\u706b\u7a2e\u6ce8\u610f"),
-    (6, "\u717d\u308a\u6c17\u5473"),
-    (7, "\u304b\u306a\u308a\u5371\u967a"),
-    (8, "\u79d2\u3067\u708e\u4e0a"),
-    (9, "\u4f1d\u8aac\u306e\u66b4\u8a00"),
-    (10, "\u898f\u7d04\u62b5\u89e6\u30ae\u30ea\u30ae\u30ea"),
+    (1, "聖人モード"),
+    (2, "ほぼ無害"),
+    (3, "幾何数理工学の期末試験レベル"),
+    (4, "ツッコミ待ち"),
+    (5, "火種注意"),
+    (6, "煽り気味"),
+    (7, "かなり危険"),
+    (8, "秒で炎上"),
+    (9, "伝説の暴言"),
+    (10, "規約抵触ギリギリ"),
 ]
 
 
@@ -116,14 +118,7 @@ def configure_genai() -> None:
     genai.configure(api_key=GEMINI_API_KEY)
 
 
-SYSTEM_INSTRUCTION = """You score how inflammatory, abusive, or likely to cause outrage the speech is, on a scale of 1 (calm) to 10 (extremely toxic / likely to blow up online). Consider Japanese: insults, slurs, harassment, excessive baiting.
-
-Rules:
-- Output ONLY the JSON schema field \"score\" as an integer 1-10.
-- No explanation, no markdown, no extra keys.
-- If audio is silent or unintelligible, use score=1."""
-
-
+# GeminiがJSONを返せなかった時に、テキストからスコアを抽出
 def extract_score_from_text(text: str) -> int | None:
     m = re.search(r"(?<![0-9])([1-9]|10)(?![0-9])", text.strip())
     if m:
@@ -131,6 +126,7 @@ def extract_score_from_text(text: str) -> int | None:
     return None
 
 
+# Geminiを使ってスコアを判定
 def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime_type: str) -> FlameScoreResponse:
     configure_genai()
     model = genai.GenerativeModel(
@@ -162,7 +158,19 @@ def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime
         temperature=0.2,
     )
 
-    response = model.generate_content(user_parts, generation_config=generation_config)
+    ab_len = len(audio_bytes) if audio_bytes else 0
+    try:
+        response = model.generate_content(user_parts, generation_config=generation_config)
+    except Exception as e:
+        logger.warning(
+            "Gemini generate_content failed: %s (model=%s mime=%r audio_len=%d has_transcript=%s)",
+            e,
+            GEMINI_MODEL,
+            mime_type,
+            ab_len,
+            bool(transcript and transcript.strip()),
+        )
+        raise
 
     raw_text = (response.text or "").strip()
     try:
@@ -272,16 +280,26 @@ async def score_audio(
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="empty file")
 
+    logger.info(
+        "score_audio: received file=%r size=%d bytes mime=%r transcript_chars=%d gemini_key_set=%s",
+        file.filename,
+        len(audio_bytes),
+        mime,
+        len(transcript) if transcript else 0,
+        bool(GEMINI_API_KEY),
+    )
+
     try:
         out = score_with_gemini(
             transcript=transcript,
             audio_bytes=audio_bytes,
             mime_type=mime,
         )
-    except HTTPException:
+    except HTTPException as e:
+        logger.warning("score_audio: HTTP %s: %s", e.status_code, e.detail)
         raise
     except Exception as e:
-        logger.exception("score_audio failed")
+        logger.exception("score_audio failed (size=%d mime=%r)", len(audio_bytes), mime)
         raise HTTPException(status_code=500, detail=str(e)) from e
     send_score_to_mcu(out.score)
     return out
