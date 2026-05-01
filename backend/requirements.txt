@@ -4,3 +4,4 @@ python-multipart==0.0.20
 google-generativeai==0.8.4
 pyserial==3.5
 python-dotenv==1.0.1
+typing-extensions>=4.12.0

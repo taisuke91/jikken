@@ -3,37 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>暴言ランク・炎上指数</title>
-  <link rel="stylesheet" href="/assets/style.css" />
+  <meta name="color-scheme" content="light" />
+  <title>暴言ランク</title>
+  <!-- CSS が読めない環境でも黄土背景・ダークモードの黒画面を避ける -->
+  <style>
+    html {
+      color-scheme: light;
+      background-color: #fffaf4;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background-color: #fffaf4;
+      color: #1c1612;
+    }
+  </style>
+  <link rel="stylesheet" href="/assets/style.css?v=ochre5" />
 </head>
 <body>
-  <div class="bg"></div>
-  <main class="panel">
-    <header>
-      <h1>暴言ランク</h1>
-      <p class="sub">マイクで吹き込むと Gemini が炎上指数（1～10）を JSON スキーマで返します</p>
+  <main id="appMain">
+    <header class="hero">
+      <h1 class="hero-title"><span class="hero-flame" aria-hidden="true">🔥</span> 暴言ランク</h1>
+      <p class="sub">録音を送ると AI が判定し、状態 0〜3 が Arduino に送られます。</p>
     </header>
-
-    <section class="controls">
-      <div class="btn-row">
-        <button type="button" id="btnRecord" class="primary">録音して判定（音声を API へ）</button>
-        <button type="button" id="btnSpeech" class="ghost">ブラウザ認識 → テキスト判定</button>
-      </div>
-      <p id="recStatus" class="hint">録音: 停止中</p>
-      <p id="speechHint" class="hint">※ Web Speech は Chrome 推奨。マイク許可が必要です。</p>
-    </section>
-
-    <section class="manual-test">
-      <h2 class="section-title">テスト（マイコンのみ）</h2>
-      <p class="hint">Gemini なし。押した数字をそのままシリアル送信（<code>SERIAL_PORT</code> 設定時）</p>
-      <div class="manual-grid" id="manualGrid" aria-label="スコア 1〜10"></div>
-      <p id="manualStatus" class="hint manual-status">—</p>
-    </section>
 
     <section class="meter" aria-live="polite">
       <div class="score-wrap">
         <span class="score" id="scoreNum">—</span>
-        <span class="max">/10</span>
+        <span class="max">/3</span>
       </div>
       <p class="label" id="scoreLabel">待機中</p>
       <div class="bar-track">
@@ -41,11 +38,48 @@
       </div>
     </section>
 
+    <section class="controls">
+      <button type="button" id="btnRecord" class="btn-record">録音して判定</button>
+      <div id="recLevelWrap" class="rec-level-wrap rec-level-wrap--hide" aria-hidden="true">
+        <span class="rec-level-label">入力レベル</span>
+        <div id="recLevelTrack" class="rec-level-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="マイク音量">
+          <div class="rec-level-fill" id="recLevelFill"></div>
+        </div>
+        <span class="rec-level-label rec-waveform-label">波形（マイクに届いている音）</span>
+        <canvas
+          id="recWaveform"
+          class="rec-waveform"
+          width="600"
+          height="112"
+          aria-hidden="true"
+        ></canvas>
+        <p class="rec-waveform-hint">話すと波形が動きます。バーと波形が無音ではほぼ止まります。</p>
+      </div>
+      <p id="recStatus" class="hint rec-hint">停止中</p>
+    </section>
+
+    <aside id="flareCallout" class="flare-callout flare-callout--hide" aria-hidden="true">
+      <span class="flare-callout__icon" aria-hidden="true">🔥</span>
+      <div class="flare-callout__body">
+        <strong class="flare-callout__title">炎上モードが点灯しています</strong>
+        <p id="flareCalloutText" class="flare-callout__text"></p>
+      </div>
+    </aside>
+
+    <section class="manual-test">
+      <h2 class="section-title">マイコン送信（0〜3）</h2>
+      <p class="hint"><code>SERIAL_PORT</code> があるときだけ</p>
+      <div class="manual-grid" id="manualGrid" aria-label="状態 0〜3"></div>
+      <p id="manualStatus" class="hint manual-status">—</p>
+    </section>
+
     <section class="log">
-      <h2>直近の応答</h2>
-      <pre id="rawOut">（まだありません）</pre>
+      <details>
+        <summary>レスポンス JSON</summary>
+        <pre id="rawOut">（まだありません）</pre>
+      </details>
     </section>
   </main>
-  <script src="/assets/app.js"></script>
+  <script src="/assets/app.js?v=ochre5"></script>
 </body>
 </html>

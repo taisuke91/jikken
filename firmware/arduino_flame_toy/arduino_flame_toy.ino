@@ -1,5 +1,5 @@
 /**
- * Flame toy demo: reads lines "FLAME 7" from PC serial, blinks built-in LED.
+ * Flame toy demo: reads lines "FLAME <state>" from PC serial (state 0–3), blinks LED.
  * Set SERIAL_PORT and SERIAL_SIMPLE=1 in backend/.env, baud 115200.
  */
 const unsigned long BAUD = 115200;

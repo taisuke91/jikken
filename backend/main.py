@@ -1,5 +1,5 @@
 """
-Flame / outrage score API (Gemini + JSON schema)
+Flame / outrage state API (Gemini returns score ∈ {-1..3}; score=-1 resets state to 0, else current+score clamped to {0..3} for MCU).
 """
 from __future__ import annotations
 
@@ -7,17 +7,19 @@ import json
 import logging
 import os
 import re
-import typing
 from typing import Any
+from typing_extensions import TypedDict
 
 import google.generativeai as genai
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google.generativeai.types import HarmBlockThreshold, HarmCategory
 from pydantic import BaseModel, Field
+
+from prompts import SYSTEM_INSTRUCTION
 
 load_dotenv()
 
@@ -25,41 +27,53 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 SERIAL_PORT = os.getenv("SERIAL_PORT", "").strip()
 SERIAL_BAUD = int(os.getenv("SERIAL_BAUD", "115200"))
 SERIAL_SIMPLE = os.getenv("SERIAL_SIMPLE", "").lower() in ("1", "true", "yes")
 
 
-class FlameScoreDict(typing.TypedDict):
+class FlameScoreDict(TypedDict):
     score: int
 
 
-class FlameScoreResponse(BaseModel):
-    score: int = Field(..., ge=1, le=10)
+class FlameStateResponse(BaseModel):
+    """score: LLM judgment this turn; state after apply (score==-1 ⇒ 0; else clamp(current+score))."""
+
+    score: int = Field(..., ge=-1, le=3)
+    state: int = Field(..., ge=0, le=3)
     label: str = Field(...)
     raw_json: dict[str, Any] | None = None
 
 
 LABELS_JA = [
-    (1, "\u8056\u4eba\u30e2\u30fc\u30c9"),
-    (2, "\u307b\u307c\u7121\u5bb3"),
-    (3, "\u3061\u3087\u3044\u8f9b\u53e3"),
-    (4, "\u30c4\u30c3\u30b3\u30df\u5f85\u3061"),
-    (5, "\u706b\u7a2e\u6ce8\u610f"),
-    (6, "\u717d\u308a\u6c17\u5473"),
-    (7, "\u304b\u306a\u308a\u5371\u967a"),
-    (8, "\u79d2\u3067\u708e\u4e0a"),
-    (9, "\u4f1d\u8aac\u306e\u66b4\u8a00"),
-    (10, "\u898f\u7d04\u62b5\u89e6\u30ae\u30ea\u30ae\u30ea"),
+    (0, "平常"),
+    (1, "ちょい刺激"),
+    (2, "かなりヤバい"),
+    (3, "限界寸前"),
 ]
 
 
-def score_to_label(score: int) -> str:
+def state_to_label(state: int) -> str:
     for s, label in LABELS_JA:
-        if score <= s:
+        if state <= s:
             return label
     return LABELS_JA[-1][1]
+
+
+# Running accumulator for serial / UI (resets only on process restart).
+_mcu_state: int = 0
+
+
+def get_mcu_state() -> int:
+    return _mcu_state
+
+
+def apply_llm_score_to_state(current: int, llm_score: int) -> int:
+    """LLM score: -1 forces state to 0; nonnegative scores add then clamp to 0..3."""
+    if llm_score == -1:
+        return 0
+    return max(0, min(3, current + llm_score))
 
 
 def _safety_unblock_all():
@@ -90,16 +104,17 @@ def get_serial():
         return None
 
 
-def send_score_to_mcu(score: int) -> bool:
-    """Returns True if data was written to serial, False if skipped or failed."""
+def send_state_to_mcu(state: int) -> bool:
+    """Send accumulated level 0–3 to MCU. Returns True if written."""
+    state = max(0, min(3, state))
     ser = get_serial()
     if not ser:
         return False
     if SERIAL_SIMPLE:
-        line = f"FLAME {score}\n"
+        line = f"FLAME {state}\n"
         payload = line.encode("ascii")
     else:
-        line = json.dumps({"type": "flame", "score": score}, ensure_ascii=False) + "\n"
+        line = json.dumps({"type": "flame", "state": state}, ensure_ascii=False) + "\n"
         payload = line.encode("utf-8")
     try:
         ser.write(payload)
@@ -116,22 +131,18 @@ def configure_genai() -> None:
     genai.configure(api_key=GEMINI_API_KEY)
 
 
-SYSTEM_INSTRUCTION = """You score how inflammatory, abusive, or likely to cause outrage the speech is, on a scale of 1 (calm) to 10 (extremely toxic / likely to blow up online). Consider Japanese: insults, slurs, harassment, excessive baiting.
-
-Rules:
-- Output ONLY the JSON schema field \"score\" as an integer 1-10.
-- No explanation, no markdown, no extra keys.
-- If audio is silent or unintelligible, use score=1."""
-
-
 def extract_score_from_text(text: str) -> int | None:
-    m = re.search(r"(?<![0-9])([1-9]|10)(?![0-9])", text.strip())
+    """Recover score ∈ {-1..3} from malformed model text."""
+    t = text.strip()
+    if re.search(r"(?<![\d-])-1(?!\d)", t):
+        return -1
+    m = re.search(r"(?<!\d)([0-3])(?!\d)", t)
     if m:
         return int(m.group(1))
     return None
 
 
-def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime_type: str) -> FlameScoreResponse:
+def parse_score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime_type: str) -> tuple[int, dict[str, Any]]:
     configure_genai()
     model = genai.GenerativeModel(
         GEMINI_MODEL,
@@ -141,7 +152,7 @@ def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime
 
     user_parts: list[Any] = []
     if audio_bytes:
-        user_parts.append("Score the speech in this audio. Return only the JSON schema.")
+        user_parts.append("Classify this audio into score (-1..3). Return only the JSON schema.")
         user_parts.append({"mime_type": mime_type, "data": audio_bytes})
     if transcript:
         if audio_bytes:
@@ -150,7 +161,8 @@ def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime
             )
         else:
             user_parts.append(
-                "Score this utterance. Return only the JSON schema.\n\n" + transcript.strip()
+                "Classify this utterance into score (-1..3). Return only the JSON schema.\n\n"
+                + transcript.strip()
             )
 
     if not user_parts:
@@ -162,30 +174,56 @@ def score_with_gemini(*, transcript: str | None, audio_bytes: bytes | None, mime
         temperature=0.2,
     )
 
-    response = model.generate_content(user_parts, generation_config=generation_config)
+    ab_len = len(audio_bytes) if audio_bytes else 0
+    try:
+        response = model.generate_content(user_parts, generation_config=generation_config)
+    except Exception as e:
+        logger.warning(
+            "Gemini generate_content failed: %s (model=%s mime=%r audio_len=%d has_transcript=%s)",
+            e,
+            GEMINI_MODEL,
+            mime_type,
+            ab_len,
+            bool(transcript and transcript.strip()),
+        )
+        raise
 
     raw_text = (response.text or "").strip()
     try:
         data = json.loads(raw_text)
-        s = int(data["score"])
+        d = int(data["score"])
     except Exception:
-        s_maybe = extract_score_from_text(raw_text)
-        data = {"score": s_maybe} if s_maybe is not None else {}
-        if s_maybe is None:
+        d_maybe = extract_score_from_text(raw_text)
+        data = {"score": d_maybe} if d_maybe is not None else {}
+        if d_maybe is None:
             raise HTTPException(
                 status_code=502,
                 detail=f"Bad model output: {raw_text[:500]}",
             )
-        s = s_maybe
+        d = d_maybe
 
-    s = max(1, min(10, s))
-    return FlameScoreResponse(score=s, label=score_to_label(s), raw_json=data if isinstance(data, dict) else None)
+    d = max(-1, min(3, d))
+    return d, data if isinstance(data, dict) else {"score": d}
 
 
 BASE_DIR = os.path.dirname(__file__)
 FRONTEND_DIST = os.path.join(BASE_DIR, "..", "frontend", "dist")
 
-app = FastAPI(title="Flame score API")
+app = FastAPI(title="Flame state API")
+
+
+@app.middleware("http")
+async def disable_asset_cache_for_dev(request: Request, call_next):
+    """Avoid stale CSS/JS when iterating on frontend/dist (Safari caches aggressively)."""
+    response = await call_next(request)
+    path = request.url.path
+    ext = path.rsplit(".", 1)[-1] if "." in path.split("/")[-1] else ""
+    if path.startswith("/assets/") and ext in ("css", "js"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    elif path == "/" or path == "/index.html":
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -214,16 +252,17 @@ def health():
         "model": GEMINI_MODEL,
         "serial_configured": bool(SERIAL_PORT),
         "serial_simple": SERIAL_SIMPLE,
+        "accumulator_state": get_mcu_state(),
     }
 
 
 class McuPushBody(BaseModel):
-    score: int = Field(..., ge=1, le=10)
+    state: int = Field(..., ge=0, le=3)
 
 
 class McuPushResponse(BaseModel):
     ok: bool = True
-    score: int
+    state: int
     label: str
     serial_write_ok: bool
     serial_configured: bool
@@ -233,33 +272,48 @@ class ScoreTextBody(BaseModel):
     transcript: str = Field(..., min_length=1)
 
 
+def apply_turn(llm_score: int, raw_json: dict[str, Any] | None) -> FlameStateResponse:
+    """Apply LLM score (-1 ⇒ reset to 0; else accumulate), push resulting state to MCU."""
+    global _mcu_state
+    _mcu_state = apply_llm_score_to_state(_mcu_state, llm_score)
+    send_state_to_mcu(_mcu_state)
+    return FlameStateResponse(
+        score=llm_score,
+        state=_mcu_state,
+        label=state_to_label(_mcu_state),
+        raw_json=raw_json,
+    )
+
+
 @app.post("/api/mcu-push", response_model=McuPushResponse)
 def mcu_push(body: McuPushBody):
-    """Gemini を使わず、指定スコアだけをシリアル送信（配線・Arduino テスト用）。"""
-    s = body.score
-    written = send_score_to_mcu(s)
+    """Gemini なし。指定の状態 0–3 を蓄積変数にセットしてシリアル送信（配線テスト用）。"""
+    global _mcu_state
+    _mcu_state = max(0, min(3, body.state))
+    written = send_state_to_mcu(_mcu_state)
     return McuPushResponse(
-        score=s,
-        label=score_to_label(s),
+        state=_mcu_state,
+        label=state_to_label(_mcu_state),
         serial_write_ok=written,
         serial_configured=bool(SERIAL_PORT),
     )
 
 
-@app.post("/api/score-text", response_model=FlameScoreResponse)
+@app.post("/api/score-text", response_model=FlameStateResponse)
 def score_text(body: ScoreTextBody):
     try:
-        out = score_with_gemini(transcript=body.transcript, audio_bytes=None, mime_type="text/plain")
+        llm_score, raw = parse_score_with_gemini(
+            transcript=body.transcript, audio_bytes=None, mime_type="text/plain"
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("score_text failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
-    send_score_to_mcu(out.score)
-    return out
+    return apply_turn(llm_score, raw)
 
 
-@app.post("/api/score-audio", response_model=FlameScoreResponse)
+@app.post("/api/score-audio", response_model=FlameStateResponse)
 async def score_audio(
     file: UploadFile = File(...),
     transcript: str | None = Form(None),
@@ -272,16 +326,25 @@ async def score_audio(
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="empty file")
 
+    logger.info(
+        "score_audio: received file=%r size=%d bytes mime=%r transcript_chars=%d gemini_key_set=%s",
+        file.filename,
+        len(audio_bytes),
+        mime,
+        len(transcript) if transcript else 0,
+        bool(GEMINI_API_KEY),
+    )
+
     try:
-        out = score_with_gemini(
+        llm_score, raw = parse_score_with_gemini(
             transcript=transcript,
             audio_bytes=audio_bytes,
             mime_type=mime,
         )
-    except HTTPException:
+    except HTTPException as e:
+        logger.warning("score_audio: HTTP %s: %s", e.status_code, e.detail)
         raise
     except Exception as e:
-        logger.exception("score_audio failed")
+        logger.exception("score_audio failed (size=%d mime=%r)", len(audio_bytes), mime)
         raise HTTPException(status_code=500, detail=str(e)) from e
-    send_score_to_mcu(out.score)
-    return out
+    return apply_turn(llm_score, raw)
