@@ -3,7 +3,7 @@
  * Set SERIAL_PORT and SERIAL_SIMPLE=1 in backend/.env, baud 115200.
  */
 const unsigned long BAUD = 115200;
-const int LED_PIN = LED_BUILTIN;
+const int LED_PIN = 2;
 
 void setup() {
   Serial.begin(BAUD);
@@ -17,15 +17,19 @@ void loop() {
   String line = Serial.readStringUntil('\n');
   line.trim();
   if (line.startsWith("FLAME ")) {
-    int state = line.substring(6).toInt();
-    state = constrain(state, 0, 3);
-    // Higher accumulated outrage → more blink cycles
-    int cycles = 3 + state * 6;
-    for (int i = 0; i < cycles; i++) {
-      digitalWrite(LED_PIN, HIGH);
-      delay(80);
+    int score = line.substring(6).toInt();
+    score = constrain(score, 0, 10);
+    if (score == 0) {
       digitalWrite(LED_PIN, LOW);
-      delay(80);
+    } else {
+      digitalWrite(LED_PIN, HIGH);
     }
+    // int cycles = 12 - score;
+    // for (int i = 0; i < cycles; i++) {
+    //   digitalWrite(LED_PIN, HIGH);
+    //   delay(80);
+    //   digitalWrite(LED_PIN, LOW);
+    //   delay(80);
+    // }
   }
 }
