@@ -22,12 +22,24 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ## API
 
-- `GET /api/health` — 動作確認
+- `GET /api/health` — 動作確認。`accumulator_state` にサーバ内の累積状態（0〜3）が含まれます。
 - `POST /api/score-text` — JSON: `{"transcript":"…"}`
 - `POST /api/score-audio` — multipart: フィールド `file`（WebM 録音など）
-- `POST /api/mcu-push` — JSON: `{"score": 1-10}` … Gemini なしでシリアルのみ（配線テスト用）。画面の「テスト（マイコンのみ）」ボタンからも送信可。
+- `POST /api/mcu-push` — JSON: `{"state": 0-3}` … Gemini なしで蓄積状態をその値にセットしてシリアル送信（配線テスト用）。画面の「テスト（マイコンのみ）」ボタンからも送信可。
 
-出力は `score` (1-10), `label` (日本語ランク名), `raw_json` 。Gemini 側は `response_mime_type=application/json` + `response_schema` （`score: int`）で安定化。
+`score-text` / `score-audio` の応答フィールド:
+
+- `score`: Gemini が返した値（整数 `-1` または `0`〜`3`）。JSON スキーマは `score` のみ。
+- `state`: **送信後**の累積レベル（0〜3）。マイコンにもこの値が送られます。
+- `label`: `state` に対応する日本語ラベル。
+- `raw_json`: モデル生データ（デバッグ用）。
+
+**状態の更新ルール（サーバ側・LLM は足し算しない）**
+
+1. `score === -1`（謝罪・強いデエスカレーションと判定されたとき）→ **`state` は必ず 0**（減算ではなくフルリセット）。
+2. `score` が `0`〜`3` のとき → `state = max(0, min(3, 前回のstate + score))`。
+
+プロセス再起動で累積は 0 に戻ります。
 
 ## マイコンと PC をつなぐ（初心者向け）
 
@@ -41,7 +53,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 1. Arduino に `firmware/arduino_flame_toy/arduino_flame_toy.ino` を書き込み、通信速度 115200 でアップロード。
 2. `.env` に `SERIAL_PORT=` （上記のデバイスパス）と `SERIAL_SIMPLE=1` を設定。
-3. API を起動したままブラウザから録音判定すると、判定直後に `FLAME <1-10>` がシリアルで送られます。
+3. API を起動したままブラウザから録音判定すると、判定直後に `FLAME <0-3>` がシリアルで送られます。
 
 4. スケッチはその文字列を読んで LED を点滅します（サンプルは点滅回数で強さを表現）。
 
@@ -51,7 +63,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 |---------|--------|
 | ポートが見つからない | USB 差し直し、別のケーブル、ドライバ（CH340 等）のインストール |
 | Permission denied | macOS/Linux でユーザを `dialout`/`uucp` に入れる、または `cu.` 側を使う |
-| 音声 API が失敗する | 先に **ブラウザ認識 → テキスト判定** を試す。音声は WebM でモデルによって未対応のことあり |
+| 音声 API が失敗する | ブラウザのコンソールとレスポンス本文を確認する。録音は WebM（Opus）送出が多く、モデル・MIME の組み合わせによっては未対応のことがある |
 
 ## 注意
 

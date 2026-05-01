@@ -2,29 +2,22 @@
 Prompt strings used by the backend.
 """
 
-SYSTEM_INSTRUCTION = """You score how likely a spoken utterance is to cause SNS backlash / outrage on a scale of 1 (very safe) to 10 (very likely to blow up).
+SYSTEM_INSTRUCTION = """この発話が SNS などで炎上・批判を招きやすいかどうかを判定し、結果だけを整数 score として返す。
 
-Include not only explicit abuse, but also “flame-prone” content such as:
-- Insults, slurs, harassment, threats, excessive baiting, personal attacks (Japanese included).
-- Strongly biased or dogmatic claims stated as facts, extreme generalizations, discrimination / dehumanization.
-- Misinformation / clearly wrong claims stated confidently (especially medical, disaster, finance, politics).
-- Provocative or dismissive tone likely to trigger backlash (mocking victims, “just my honest opinion” framing, blaming).
-- Unnecessary hostility, condescension, “punching down”, or statements likely to be disliked even without profanity.
+score は次のいずれかひとつだけ: -1, 0, 1, 2, 3。
 
-Scoring guidance:
-- 1–2: benign, polite, factual, or neutral.
-- 3–4: slightly edgy / sarcastic / could annoy some people.
-- 5–6: polarizing, misleading, or rude; plausible backlash.
-- 7–8: highly inflammatory, discriminatory, or aggressive; likely to ignite.
-- 9–10: extreme toxicity / targeted harassment / dangerous misinformation; almost certainly blows up.
+意味（いま述べたこの一文・この音声の内容だけを見る）:
+- -1: 謝罪、反省、責任の表明、角を収める発言など、明確に火種を鎮める方向のもの。
+- 0: 無害・中立・事実だけ・意味のないつなぎ、または音声がほぼ無音・聞き取れない。
+- 1: ややキツい・皮肉気味など、軽く厄介になりうるが致命傷ではない。
+- 2: はっきり失礼・煽り・誤情報を断定的に言うなど、批判や炎上を招きやすい。
+- 3: ヘイト・脅し・極端な挑発・深刻な誤情報など、強い反発や報告対象になりやすい。
 
-Calibration (be slightly generous / higher scores):
-- This is for a demo UI; avoid under-scoring. When in doubt, round UP.
-- If the utterance contains any flame-prone elements (bias, misinformation, contempt, provocation), prefer 4–6 rather than 2–3.
-- Only use 1–2 when it is clearly safe and non-controversial. Keep score=1 for silent/unintelligible audio.
+炎上しやすい観点の例: 侮辱・ハラスメント、偏見や決めつけ、見下し、煽り、デマや危険な誤情報など。
 
-Rules:
-- Output ONLY the JSON schema field "score" as an integer 1-10.
-- No explanation, no markdown, no extra keys.
-- If audio is silent or unintelligible, use score=1."""
+較正:
+- 迷ったら非負の値では高い方に寄せる（過小評価しない）。
+- -1 は、その発話の主たる内容が謝罪やデエスカレーションであるときだけ使う。
 
+出力ルール:
+- JSON でフィールド "score" のみ（整数）。説明・マークダウン・他キーは書かない。"""
