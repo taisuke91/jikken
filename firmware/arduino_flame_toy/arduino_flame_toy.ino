@@ -3,11 +3,11 @@
  * Set SERIAL_PORT and SERIAL_SIMPLE=1 in backend/.env, baud 115200.
  */
 const unsigned long BAUD = 115200;
-const int LED_PIN = LED_BUILTIN;
+const int LED_PIN = 2;
 
 void setup() {
   Serial.begin(BAUD);
-  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
 }
 
 void loop() {
@@ -20,9 +20,9 @@ void loop() {
     int score = line.substring(6).toInt();
     score = constrain(score, 0, 10);
     if (score == 0) {
-      digitalWrite(LED_BUILTIN, LOW);
+      digitalWrite(LED_PIN, LOW);
     } else {
-      digitalWrite(LED_BUILTIN, HIGH);
+      digitalWrite(LED_PIN, HIGH);
     }
     // int cycles = 12 - score;
     // for (int i = 0; i < cycles; i++) {
